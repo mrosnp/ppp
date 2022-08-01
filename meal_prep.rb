@@ -1,25 +1,6 @@
 require "trello"
 
 class MealPrep
-  BOARD_ID = ENV["COOKING_BOARD_ID"]
-
-  PLACEHOLDER_LABEL = "placeholder"
-  MAIN_LABEL = "main"
-  SIDE_LABEL = "side"
-  SNACK_LABEL = "snack"
-  INDIVIDUAL_ITEM_LABEL = "ind"
-
-  PLACEHOLDERS = "placeholders"
-  MAINS = "mains"
-  SIDES = "sides"
-  SNACKS = "snacks"
-  INDIVIDUAL_ITEMS = "individual items"
-  UNCATEGORIZED = "uncategorized"
-
-  CURRENT = "current"
-  PREVIOUS = "previous"
-  GROCERY = "grocery list"
-
   def initialize
     Trello.configure do |config|
       config.developer_public_key = ENV["TRELLO_DEVELOPER_PUBLIC_KEY"]
@@ -28,92 +9,94 @@ class MealPrep
   end
 
   def print_current_list_to_file
-    curr_list = get_list(CURRENT)
     # preprend current list to markdown file
   end
 
   def arrange_board_for_next_day
-    clear_list(PREVIOUS)
-    move_curr_to_prev_list
-  end
-
-  def move_curr_to_prev_list
-    # for cards in current list
-    #   set_card_to_list(card, PREVIOUS_LIST)
-    # end
-  end
-
-  def set_card_to_list(card, list)
+    reset_cards(previous_list)
+    current_list.move_all_cards(previous_list)
   end
 
   def reset_planning_lists
-    [CURRENT, PREVIOUS, GROCERY].each do |list_name| 
-      clear_list(list_name)
+    planning_lists.each do |list| 
+      reset_cards(list)
     end
   end
 
   private 
 
+  def planning_lists
+    [current_list, previous_list, grocery_list]
+  end
+
+  def label_to_list_mapping
+    {
+      :placeholder => placeholders_list,
+      :main => mains_list,
+      :side => sides_list,
+      :snack => snacks_list,
+      :ind => individual_items_list,
+      :uncategorized => uncategorized_list
+    }
+  end
+
   def cooking_board
-    @cooking_board ||= Trello::Board.find(BOARD_ID)
+    @cooking_board ||= Trello::Board.find(ENV["COOKING_BOARD_ID"])
+  end
+
+  def current_list
+    @current_list ||= get_list("current")
+  end
+
+  def previous_list
+    @previous_list ||= get_list("previous")
+  end
+
+  def grocery_list
+    @grocery_list ||= get_list("grocery list")
   end
 
   def placeholders_list
-    @placeholders_list ||= get_list(PLACEHOLDERS)
+    @placeholders_list ||= get_list("placeholders")
   end
 
   def mains_list
-    @mains_list ||= get_list(MAINS)
+    @mains_list ||= get_list("mains")
   end
 
   def sides_list
-    @sides_list ||= get_list(SIDES)
+    @sides_list ||= get_list("sides")
   end
 
   def snacks_list
-    @snacks_list ||= get_list(SNACKS)
+    @snacks_list ||= get_list("snacks")
   end
 
   def individual_items_list
-    @individual_items_list ||= get_list(INDIVIDUAL_ITEMS)
+    @individual_items_list ||= get_list("individual items")
   end
 
   def uncategorized_list
-    @uncategorized_list ||= get_list(UNCATEGORIZED)
+    @uncategorized_list ||= get_list("uncategorized")
   end
 
-  def clear_list(name)
-    list = get_list(name)
+  def reset_cards(list)
     list.cards.each do |card|
       move_card_to_matching_list(card)
     end
   end
 
   def get_list(name)
-    cooking_board.lists.filter{ |list| list.attributes["name"] == name }.first
+    cooking_board.lists.filter{ |list| list.name.downcase == name.downcase }.first
   end
 
   def move_card_to_matching_list(card)
-    dominant_label = dominant_label(card)
-
-    case dominant_label
-    when PLACEHOLDER_LABEL
-      card.move_to_list(placeholders_list)
-    when MAIN_LABEL
-      card.move_to_list(mains_list)
-    when SIDE_LABEL
-      card.move_to_list(sides_list)
-    when SNACK_LABEL
-      card.move_to_list(snacks_list)
-    when INDIVIDUAL_ITEM_LABEL
-      card.move_to_list(individual_items_list)
-    else
-      card.move_to_list(uncategorized_list)
-    end
+    card_type_label = extract_card_type_label(card)
+    matching_list = label_to_list_mapping[card_type_label.to_sym]
+    card.move_to_list(matching_list)
   end
-
-  def dominant_label(card)
-    label_names = card.labels.map{ |label| label.attributes["name"] }
-    label_names.include?(PLACEHOLDER_LABEL) ? PLACEHOLDER_LABEL : label_names.first
+  
+  def extract_card_type_label(card)
+    card.labels.none? ? "uncategorized" : card.labels.first.name
   end
 end
